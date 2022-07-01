@@ -1,0 +1,420 @@
+---
+title: "Twitter Sentiment Analysis"
+subtitle: "Tweets Hashtag: #SportsBetting"
+author: "Andre Carney"
+date: "June, 2022"
+output: 
+  word_document: 
+    highlight: tango
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, error = FALSE, warning = FALSE)
+```
+
+
+<!-- ## Loading all the required packages in the R chunk below. -->
+
+<!-- * You will need to install the libraries below if you don't have them install already. For instance, to install **tidyverse** from the console run **_install.packages("tidyverse")_** -->
+
+```{r libraries}
+
+library(rtweet)
+#library(twitteR)
+library(ROAuth)
+require(RCurl)
+library(stringr)
+library(tm)
+library(tidyverse)
+library(wordcloud)
+library(tidytext)
+library(SnowballC)
+library(fpc)
+options(stringsAsFactors = FALSE, scipen = 999)
+
+```
+
+
+## Load Twitter API
+
+* The first step is to register in the twitter application developer’s portal and get the authorization. You need to follow the link to register https://apps.twitter.com
+
+* Create New App and use the API credentials in the project _.Renviron_ file. **Please do not display your API key in your publicly accessible code**.
+
+```{r credentials}
+
+# api_key = Sys.getenv("api_key")
+# api_secret = Sys.getenv("api_secret")
+# access_token = Sys.getenv("access_token")
+# access_token_secret = Sys.getenv("access_token_secret")
+
+
+```
+
+
+
+ After obtaining credentials, we setup authorizations to access twitter API.
+
+```{r credentialsKey}
+
+#setup_twitter_oauth(api_key, api_secret, access_token, access_token_secret)
+
+```
+
+
+
+## Search twitter feeds
+
+Search the twitter feeds  using the keyword below: 
+
+* #SportsBetting 
+
+
+
+
+### Mining twitter feeds with keyword: #SportsBetting
+
+```{r searchkeyword}
+
+## mutliple search keywords with hashtag
+  
+findfd <-   "#SportsBetting"
+
+number <-  100000
+
+```
+
+ <!-- In the above code, we use keyword string to retrieve `r number ` tweets. The code for searching twitter is -->
+
+```{r searchtwitter}
+#tweets <- searchTwitter(findfd, number, lang = 'en', retryOnRateLimit = 100)
+
+tweets <- search_tweets(
+  findfd, n = number, include_rts = FALSE,lang = "en", 
+  retryonratelimit = TRUE
+)
+
+
+n.tweet <- nrow(tweets)
+
+cat("length of tweets retrieved is ", n.tweet)
+
+```
+
+
+<!-- ### Cleaning the tweets for further analysis and dropping all the retweets -->
+
+
+```{r}
+
+# tweets.df <- twListToDF(tweets) %>% 
+#   filter(!isRetweet == "TRUE")
+
+```
+
+
+#### Text Analysis and Visualization
+
+ <!-- Some data cleaning for descriptive visualizations starts from here -->
+
+```{r}
+
+tweet_data <- data.frame(date_time = tweets$created_at,
+                         username = tweets$screen_name,
+                         tweet_text = tweets$text,
+                         favoritedCount = tweets$favorite_count,
+                         retweetCount = tweets$retweet_count,
+                         isRetweet = tweets$is_retweet,
+                         retweeted_Count = tweets$retweet_retweet_count,
+                         location = tweets$location)
+
+# cleanup
+
+tweet_data2 <- tweet_data %>% 
+  mutate(date_time = as.POSIXct(date_time, format = "%a %b %d %H:%M:%S +0000 %Y")) %>%
+  mutate(tweet_text = gsub("http://*| https://* | https)", "", tweet_text),
+         tweet_text = gsub("https.*","",tweet_text),
+         tweet_text = gsub("t.co", "", tweet_text),
+         tweet_text = gsub('[[:digit:]]+', '', tweet_text),
+         tweet_text = gsub('[[:punct:]]+', '', tweet_text))
+
+
+
+### remove duplicated tweets
+
+tweet_data2 <- tweet_data2[!duplicated(tweet_data2$tweet_text), ]
+
+data("stop_words")
+
+# get a list of words
+
+tweet_clean <- tweet_data2 %>% 
+  dplyr::select(tweet_text) %>%
+  unnest_tokens(word, tweet_text) %>%
+  filter(!(nchar(word) == 1)) %>% 
+  anti_join(stop_words) %>%
+  filter(!word %in% c("rt", "t.co"))
+
+## joining, by = "word"
+
+# plot the top 15 words --
+
+tweet_clean_eng <- tweet_clean %>% 
+         mutate(word = iconv(word, from = "latin1", to = "ASCII")) %>%
+         filter(!is.na(word))
+
+tweet_clean_eng$word <- str_replace_all(tweet_clean_eng$word, "[^[:alnum:]]", " ")
+
+
+ tweet_clean_eng %>%
+  count(word, sort = TRUE) %>%
+  mutate(word = str_to_title(word),
+         word = reorder(word, n)) %>% 
+  top_n(15, n) %>%
+   ungroup() %>% 
+   arrange(word, -n) %>% 
+  ggplot(aes(x = word, y = n, fill = word)) +
+  geom_col(show.legend = F) +
+   scale_y_continuous(labels = scales::comma)+
+  xlab(NULL) +
+  coord_flip() +
+  labs(y = "Frequency",
+       x = "Words",
+       title = "Top 15 words found in the tweets",
+       caption = "tweets visualization | #BLM") +
+   theme_bw()
+
+```
+
+
+
+
+
+
+
+WordCloud Visualization for significant words in the tweets
+
+* Wordcloud showing the top 50 words. You can modify this in the code chunk below by adding the _top_n()_ function entry. 
+
+```{r}
+
+tweet_clean_eng <- tweet_clean %>% 
+         mutate(word = iconv(word, from = "latin1", to = "ASCII")) %>%
+         filter(!is.na(word))
+
+tweet_clean_eng$word <- str_replace_all(tweet_clean_eng$word, "[^[:alnum:]]", " ")
+
+wordCloud <- tweet_clean_eng %>% group_by(word) %>%
+  summarise(Frequency = n()) %>% 
+  top_n(50) #%>%  # top 50 words
+#filter(!word %in% c("thepamilerin", "drmikeadenuga", "giveawaynaija", "governor",
+                    #"makinde"))
+
+wordcloud(wordCloud$word, wordCloud$Frequency, scale = c(5,.5), min.freq = 1, max.words = Inf,
+	random.order = FALSE, random.color = TRUE, rot.per = .5,
+	colors = "black" , ordered.colors = TRUE, use.r.layout = FALSE,
+	fixed.asp = TRUE)
+
+```
+
+
+### Sentiment Analysis
+
+<!-- This contains a lot of URLs, hashtags and other twitter handles. We will remove all these using the gsub function. -->
+
+```{r}
+
+
+tweets.df2 <- tweet_data %>% mutate(text = gsub("http://*| https://* | https)", "", tweet_text),
+         text = gsub("https.*","",tweet_text),
+         text = gsub("#.*", "", tweet_text),
+         text = gsub("@.*", "", tweet_text))
+
+
+
+```
+
+
+ <!-- remove retweets and duplicate tweets text -->
+
+```{r}
+### remove retweeted tweets
+
+tweets.df2 <- tweets.df2 %>% filter(isRetweet == FALSE)
+
+
+### remove duplicated tweets
+
+tweets.df2 <- tweets.df2[!duplicated(tweets.df2$tweet_text), ]
+
+## remove non english character
+
+tweets.df2$text <- str_replace_all(tweets.df2$text, "[[:punct:]]", " ")
+
+tweets.df2 <- tweets.df2 %>% 
+         mutate(text = iconv(text, to = "ASCII//TRANSLIT")) %>%
+         filter(!is.na(text))
+
+
+
+```
+
+
+
+
+<!-- > Now, we have only the relevant part of the tweets and we can run our sentiment analysis part on the data. -->
+
+### Getting sentiment score for each tweet
+
+> We will first try to get the emotion score for each of the tweets using the _bing_ lexicon of **get_sentiments** function.
+
+```{r}
+
+tweets.df2_sentiment <- as.tibble(tweets.df2) %>%
+  unnest_tokens(word, text) %>%
+  inner_join(get_sentiments("bing"))
+
+
+```
+
+
+
+
+#### Visualize the overall sentiment
+
+```{r}
+
+result <- table(tweets.df2_sentiment$sentiment)
+
+result2 <-  as.data.frame(result) 
+
+
+result2 %>% 
+  mutate(Var1 = factor(Var1, levels = c("positive", "negative")),
+         Var1 = str_to_title(Var1)) %>% 
+  group_by(Var1) %>%
+  summarise(total = sum(Freq, na.rm = TRUE)) %>% 
+  mutate(prop = total/sum(total)) %>% 
+  filter(total != 0) %>% 
+  
+  ggplot(mapping = aes(x = 2, y = prop, fill = Var1))+
+  geom_bar(width = 1, color = "white", stat = "identity") +
+  xlim(0.5, 2.5) +
+  coord_polar(theta = "y", start = 0) +
+  theme_void() +
+  scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = paste0(round(prop*100, 1), "%")), size = 3, position = position_stack(vjust = 0.5)) +
+  scale_fill_manual(values = c("#800020", "steelblue")) +
+  labs(title = "Overall Sentiment",
+       x = "",
+       y = "",
+       fill = "Category") +
+  theme(legend.position = "top")
+
+```
+
+
+
+
+#### Plot the sentiment by keyword
+
+```{r fig.height=5}
+tweets.df2_sentiment %>% 
+  group_by(word, sentiment) %>% 
+  summarise(Count = n()) %>% 
+  ungroup() %>% 
+  #filter(Count > 1) %>% 
+  top_n(50) %>% 
+  ggplot(mapping = aes(x = reorder(word, Count), y = Count, fill = sentiment)) +
+  geom_col(show.legend = FALSE, width = 0.5)+
+  facet_wrap(.~ sentiment, scales = "free")+
+  #theme(axis.text.x = element_text(angle = 90,size = 10, vjust = 0.5, hjust = 0.9))
+  coord_flip() +
+  theme_bw()+
+  labs(y = "Frequency",
+       x = "Terms")
+  
+```
+
+
+
+## Topic Modelling using LDA
+
+<!-- Additional libraries -->
+
+```{r additional-libaries}
+library(textmineR)
+library(topicmodels)
+```
+
+
+### Data Preprocessing
+
+```{r}
+tweets.tbl <- tweets %>% 
+  select(text, status_id)
+tweets.tbl$text <- sub("RT.*:", "", tweets.tbl$text)
+tweets.tbl$text <- sub("@.* ", "", tweets.tbl$text)
+tweets.tbl$text <- sub("https", "", tweets.tbl$text)
+tweets.tbl$text <- sub("t.co", "", tweets.tbl$text)
+text_cleaning_tokens <- tweets.tbl %>% 
+  tidytext::unnest_tokens(word, text)
+text_cleaning_tokens$word <- gsub('[[:digit:]]+', '', text_cleaning_tokens$word)
+text_cleaning_tokens$word <- gsub('[[:punct:]]+', '', text_cleaning_tokens$word)
+text_cleaning_tokens <- text_cleaning_tokens %>% filter(!(nchar(word) == 1))%>% 
+  anti_join(stop_words)
+tokens <- text_cleaning_tokens %>% filter(!(word==""))
+tokens <- tokens %>% mutate(ind = row_number())
+tokens <- tokens %>% group_by(status_id) %>% mutate(ind = row_number()) %>%
+  tidyr::spread(key = ind, value = word)
+tokens [is.na(tokens)] <- ""
+tokens <- tidyr::unite(tokens, text,-status_id,sep =" " )
+tokens$text <- trimws(tokens$text)
+```
+
+### Create Document Term Matrix (DTM)
+ 
+```{r}
+#create DTM
+
+dtm <- CreateDtm(tokens$text, 
+                 doc_names = tokens$ID, 
+                 ngram_window = c(1, 2))
+
+#explore the basic frequency
+
+tf <- TermDocFreq(dtm = dtm)
+original_tf <- tf %>% select(term, term_freq,doc_freq)
+rownames(original_tf) <- 1:nrow(original_tf)
+```
+
+
+### Modelling
+
+```{r}
+ap_lda <- LDA(dtm, k = 2, control = list(seed = 1234))
+ap_topics <- tidytext::tidy(ap_lda, matrix = "beta") %>% 
+  mutate(topic = case_when(topic == "1" ~ "Topic1",
+                           topic == "2" ~ "Topic2"))
+
+```
+
+
+### Visualization
+
+```{r}
+ap_top_terms <- ap_topics %>% 
+  group_by(topic) %>% 
+  top_n(10, beta) %>% 
+  ungroup() %>% 
+  arrange(topic, -beta)
+
+ap_top_terms %>% 
+  mutate(term = reorder(term, beta)) %>% 
+  ggplot(aes(term, beta, fill = topic)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap( ~ topic, scales = "free") +
+  coord_flip()
+```
+
