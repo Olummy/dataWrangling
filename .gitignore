@@ -1,2 +1,3 @@
 # exclude the data directory
 Data/
+.Rproj.user
