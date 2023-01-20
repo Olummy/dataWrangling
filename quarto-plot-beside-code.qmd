@@ -1,0 +1,43 @@
+---
+title: "Place Code beside Plot"
+author: "Olumide Oyalola"
+format: revealjs
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Load libraries
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+#| echo: true
+
+pacman::p_load(
+  ggplot2,
+  palmerpenguins
+)
+
+
+```
+
+You can add options to executable code like this
+
+## Running Code and Display Output
+
+```{r}
+#| output-location: column-fragment
+#| echo: true
+#| fig-width: 9
+#| fig-height: 7
+
+ggplot(palmerpenguins::penguins,
+       aes(x = bill_length_mm,
+           y = bill_depth_mm,
+           color = species)) +
+  geom_point()
+
+```
